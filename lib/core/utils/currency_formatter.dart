@@ -3,25 +3,19 @@ import '../constants/app_constants.dart';
 
 /// Utility untuk format mata uang
 class CurrencyFormatter {
-  static final NumberFormat _formatter = NumberFormat.currency(
-    locale: 'id_ID',
-    symbol: AppConstants.currencySymbol,
-    decimalDigits: 0,
-  );
+  // Use decimal pattern and attach symbol manually to avoid non-breaking spaces
+  static final NumberFormat _decimal = NumberFormat.decimalPattern('id_ID');
 
   /// Format angka menjadi format mata uang (Rp 10.000)
   static String format(num amount) {
-    return _formatter.format(amount);
+    final digits = _decimal.format(amount);
+    // Ensure a normal space after symbol (avoid NBSP from some locales)
+    return '${AppConstants.currencySymbol} $digits';
   }
 
   /// Format angka menjadi format mata uang tanpa simbol (10.000)
   static String formatWithoutSymbol(num amount) {
-    final formatter = NumberFormat.currency(
-      locale: 'id_ID',
-      symbol: '',
-      decimalDigits: 0,
-    );
-    return formatter.format(amount).trim();
+    return _decimal.format(amount);
   }
 
   /// Parse string mata uang menjadi angka

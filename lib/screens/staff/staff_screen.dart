@@ -145,12 +145,13 @@ class _StaffScreenState extends State<StaffScreen> {
                                   IconButton(
                                     icon: const Icon(Icons.edit_outlined),
                                     onPressed: () async {
-                                      final updated = await Navigator.of(context).push<bool>(
+                                      final nav = Navigator.of(context);
+                                      final updated = await nav.push<bool>(
                                         MaterialPageRoute(
                                           builder: (_) => StaffFormScreen(staff: s),
                                         ),
                                       );
-                                      if (!context.mounted) return;
+                                      if (!mounted) return;
                                       if (updated == true) sp.loadStaffs();
                                     },
                                   ),
@@ -159,22 +160,27 @@ class _StaffScreenState extends State<StaffScreen> {
                                     onPressed: s.id == null
                                         ? null
                                         : () async {
+                                            final messenger = ScaffoldMessenger.of(context);
                                             final ok = await sp.deleteStaff(s.id!);
-                                            if (!context.mounted) return;
-                                            ScaffoldMessenger.of(context).showSnackBar(
-                                              SnackBar(content: Text(ok ? 'Staff dihapus' : 'Gagal menghapus staff')),
-                                            );
+                                            if (!mounted) return;
+                                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                                              if (!mounted) return;
+                                              messenger.showSnackBar(
+                                                SnackBar(content: Text(ok ? 'Staff dihapus' : 'Gagal menghapus staff')),
+                                              );
+                                            });
                                           },
                                   ),
                                 ],
                               ),
-                              onTap: () async {
-                                final updated = await Navigator.of(context).push<bool>(
+                                onTap: () async {
+                                final nav = Navigator.of(context);
+                                final updated = await nav.push<bool>(
                                   MaterialPageRoute(
                                     builder: (_) => StaffFormScreen(staff: s),
                                   ),
                                 );
-                                if (!context.mounted) return;
+                                if (!mounted) return;
                                 if (updated == true) sp.loadStaffs();
                               },
                             );
@@ -189,7 +195,7 @@ class _StaffScreenState extends State<StaffScreen> {
           final created = await Navigator.of(context).push<bool>(
             MaterialPageRoute(builder: (_) => const StaffFormScreen()),
           );
-          if (!context.mounted) return;
+          if (!mounted) return;
           if (created == true) sp.loadStaffs();
         },
         icon: const Icon(Icons.add),

@@ -7,9 +7,14 @@ import '../../services/bluetooth_classic_printer.dart';
 import '../../core/utils/currency_formatter.dart';
 import '../../core/utils/date_formatter.dart';
 
-class PrinterSettingsScreen extends StatelessWidget {
+class PrinterSettingsScreen extends StatefulWidget {
   const PrinterSettingsScreen({super.key});
 
+  @override
+  State<PrinterSettingsScreen> createState() => _PrinterSettingsScreenState();
+}
+
+class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
   // Hanya Bluetooth Classic dipertahankan
 
   // Buat transaksi dummy kecil untuk test network print
@@ -35,8 +40,9 @@ class PrinterSettingsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final sp = context.watch<SettingsProvider>();
-  // Only Bluetooth Classic printing is supported now
-    
+    // Only Bluetooth Classic printing is supported now
+    // Connection state is queried on-demand with FutureBuilder/buttons below.
+
     return Scaffold(
       appBar: AppBar(title: const Text('Pengaturan Printer')),
       body: ListView(
@@ -98,7 +104,7 @@ class PrinterSettingsScreen extends StatelessWidget {
             builder: (_) {
               final width = sp.receiptCharWidth;
               final trx = _fakeTrx();
-              final lines = _buildPreview(trx, sp.storeName, sp.storeAddress, sp.storePhone, width);
+              final lines = _buildPreview(trx, sp.storeName, sp.storeAddress, sp.storePhone, width, sp.receiptFooter);
               return Container(
                 decoration: BoxDecoration(
                   color: Colors.white,
@@ -119,10 +125,10 @@ class PrinterSettingsScreen extends StatelessWidget {
           ElevatedButton.icon(
             onPressed: () async {
               final sp = context.read<SettingsProvider>();
+              final messenger = ScaffoldMessenger.of(context);
               final mac = sp.btPrinterId;
               if (mac == null || mac.isEmpty) {
-                if (!context.mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Pilih perangkat Bluetooth di atas dulu')));
+                messenger.showSnackBar(const SnackBar(content: Text('Pilih perangkat Bluetooth di atas dulu')));
                 return;
               }
               try {
@@ -133,15 +139,16 @@ class PrinterSettingsScreen extends StatelessWidget {
                   storeAddress: sp.storeAddress,
                   storePhone: sp.storePhone,
                   paperSize: sp.paperSize,
-                  charWidth: sp.receiptCharWidth,
+                    charWidth: sp.receiptCharWidth,
+                    receiptFooter: sp.receiptFooter,
                 );
-                if (!context.mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
+                if (!mounted) return;
+                messenger.showSnackBar(
                   SnackBar(content: Text(ok ? 'Test print BT terkirim' : 'Gagal print BT')),
                 );
               } catch (e) {
-                if (!context.mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal print BT: $e')));
+                if (!mounted) return;
+                messenger.showSnackBar(SnackBar(content: Text('Gagal print BT: $e')));
               }
             },
             icon: const Icon(Icons.bluetooth_connected),
@@ -164,15 +171,89 @@ class PrinterSettingsScreen extends StatelessWidget {
               final savedId = sp.btPrinterId;
               return ListTile(
                 contentPadding: EdgeInsets.zero,
-                title: Text(savedName ?? 'Belum dipilih'),
-                subtitle: Text(savedId ?? '-'),
-                trailing: savedId == null
-                    ? null
-                    : TextButton.icon(
-                        onPressed: () => sp.clearBluetoothPrinter(),
-                        icon: const Icon(Icons.clear),
-                        label: const Text('Hapus'),
-                      ),
+                title: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Top line: name and address (MAC)
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            savedName ?? 'Belum dipilih',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        if (savedId != null)
+                          ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 160),
+                            child: Text(
+                              savedId,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[700]),
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    // Bottom line: connection icon + actions (only when an ID exists)
+                    if (savedId != null)
+                      Row(
+                        children: [
+                          FutureBuilder<bool>(
+                            future: BluetoothClassicPrinter().isConnected(savedId),
+                            builder: (c, snap) {
+                              final connected = snap.data == true;
+                              return Padding(
+                                padding: const EdgeInsets.only(right: 8.0),
+                                child: Icon(
+                                  connected ? Icons.bluetooth_connected : Icons.bluetooth_disabled,
+                                  color: connected ? Colors.green : Colors.grey,
+                                  size: 18,
+                                ),
+                              );
+                            },
+                          ),
+                          TextButton.icon(
+                            onPressed: () async {
+                              final messenger = ScaffoldMessenger.of(context);
+                              final mac = savedId;
+                              // Try connect
+                              messenger.showSnackBar(const SnackBar(content: Text('Mencoba sambungkan...')));
+                              final ok = await BluetoothClassicPrinter().openConnection(mac);
+                              if (!mounted) return;
+                              messenger.showSnackBar(SnackBar(content: Text(ok ? 'Terhubung' : 'Gagal terhubung')));
+                              setState(() {});
+                            },
+                            icon: const Icon(Icons.bluetooth),
+                            label: const Text('Connect'),
+                          ),
+                          TextButton.icon(
+                            onPressed: () async {
+                              final messenger = ScaffoldMessenger.of(context);
+                              final mac = savedId;
+                              final ok = await BluetoothClassicPrinter().closeConnection(mac);
+                              if (!mounted) return;
+                              messenger.showSnackBar(SnackBar(content: Text(ok ? 'Terputus' : 'Gagal putus')));
+                              setState(() {});
+                            },
+                            icon: const Icon(Icons.bluetooth_disabled),
+                            label: const Text('Disconnect'),
+                          ),
+                          TextButton.icon(
+                            onPressed: () => sp.clearBluetoothPrinter(),
+                            icon: const Icon(Icons.clear),
+                            label: const Text('Hapus'),
+                          ),
+                        ],
+                      )
+                    else
+                      const SizedBox.shrink(),
+                  ],
+                ),
               );
             },
           ),
@@ -181,13 +262,14 @@ class PrinterSettingsScreen extends StatelessWidget {
             alignment: Alignment.centerLeft,
             child: ElevatedButton.icon(
               onPressed: () async {
+                final messenger = ScaffoldMessenger.of(context);
                 final ok = await BluetoothClassicPrinter().ensurePermissions();
-                if (!context.mounted) return;
+                if (!mounted) return;
                 if (ok) {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Izin Bluetooth diberikan')));
-                  (context as Element).markNeedsBuild();
+                  messenger.showSnackBar(const SnackBar(content: Text('Izin Bluetooth diberikan')));
+                  setState(() {});
                 } else {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Izin Bluetooth ditolak. Aktifkan di pengaturan aplikasi.')));
+                  messenger.showSnackBar(const SnackBar(content: Text('Izin Bluetooth ditolak. Aktifkan di pengaturan aplikasi.')));
                 }
               },
               icon: const Icon(Icons.refresh),
@@ -213,15 +295,16 @@ class PrinterSettingsScreen extends StatelessWidget {
                           title: Text(d['name'] ?? 'Perangkat'),
                           subtitle: Text(d['mac'] ?? ''),
                           trailing: TextButton(
-                            onPressed: () async {
-                              final name = d['name'] ?? 'Perangkat';
-                              final id = d['mac'] ?? '';
-                              await sp.setBluetoothPrinter(name: name, id: id);
-                              if (!context.mounted) return;
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('Tersimpan: $name')),
-                              );
-                            },
+                                          onPressed: () async {
+                                            final messenger = ScaffoldMessenger.of(context);
+                                            final name = d['name'] ?? 'Perangkat';
+                                            final id = d['mac'] ?? '';
+                                            await sp.setBluetoothPrinter(name: name, id: id);
+                                            if (!mounted) return;
+                                            messenger.showSnackBar(
+                                              SnackBar(content: Text('Tersimpan: $name')),
+                                            );
+                                          },
                             child: const Text('Pilih'),
                           ),
                         ),
@@ -235,11 +318,9 @@ class PrinterSettingsScreen extends StatelessWidget {
     );
   }
 
-  List<String> _buildPreview(models.Transaction trx, String storeName, String storeAddress, String storePhone, int width) {
+  List<String> _buildPreview(models.Transaction trx, String storeName, String storeAddress, String storePhone, int width, String receiptFooter) {
     final lines = <String>[];
-    String money(num n, {bool withSymbol = true}) => withSymbol
-        ? CurrencyFormatter.format(n)
-        : CurrencyFormatter.formatWithoutSymbol(n);
+    String money(num n) => CurrencyFormatter.formatWithoutSymbol(n);
     String line([String ch = '-' ]) => List.filled(width, ch).join();
     String center(String s) {
       if (s.length >= width) return s.substring(0, width);
@@ -254,112 +335,94 @@ class PrinterSettingsScreen extends StatelessWidget {
       final pad = (fillCount > 0 ? List.filled(fillCount, fillChar).join() : fillChar);
       return '$kk$pad$v';
     }
-    List<String> wrap(String text) {
-      if (text.length <= width) return [text];
-      final out = <String>[];
-      var remaining = text.trim();
-      while (remaining.isNotEmpty) {
-        if (remaining.length <= width) { out.add(remaining); break; }
-        final cut = remaining.substring(0, width);
-        final idx = cut.lastIndexOf(' ');
-        if (idx > 0) {
-          out.add(cut.substring(0, idx));
-          remaining = remaining.substring(idx + 1).trimLeft();
-        } else {
-          out.add(cut);
-          remaining = remaining.substring(width);
-        }
-      }
-      return out;
-    }
-
-    String pmLabel(String pm) {
-      switch (pm) {
-        case 'cash':
-          return 'Tunai';
-        case 'ewallet':
-          return 'E-Wallet';
-        case 'qris':
-          return 'QRIS';
-        case 'debit':
-          return 'Debit';
-        case 'transfer':
-          return 'Transfer';
-        default:
-          return pm;
-      }
-    }
-    String pmPretty(String method) {
-      if (method.startsWith('ewallet:')) {
-        final p = method.split(':').elementAt(1);
-        return 'E-Wallet ($p)';
-      }
-      return pmLabel(method);
-    }
 
     // Header
-    lines.add(center((storeName.trim().isEmpty ? 'MyKasir' : storeName.trim())));
+    lines.add(center((storeName.trim().isEmpty ? 'MyKasir' : storeName.trim()).toUpperCase()));
     if (storeAddress.trim().isNotEmpty) {
       lines.add(center(truncate(storeAddress.trim())));
     }
     if (storePhone.trim().isNotEmpty) {
-      lines.add(center(truncate(storePhone.trim())));
+      lines.add(center('Telp: $storePhone'));
     }
-    lines.add(center('STRUK PEMBELIAN'));
-    lines.add(''); // blank line after title
-    lines.add('No: ${trx.transactionNumber}');
-    lines.add('Tanggal: ${DateFormatter.formatDateTime(trx.transactionDate)}');
-    if ((trx.staffName ?? '').isNotEmpty) {
-      lines.add(padKV('Kasir: ${trx.staffName}', 'Metode: ${pmPretty(trx.paymentMethod)}'));
-    } else {
-      lines.add(padKV('Metode: ${pmPretty(trx.paymentMethod)}', ''));
-    }
+    // blank line after store header
+    lines.add('');
+    // separator line (moved to be after the blank line)
+    lines.add(line());
+  final kasirName = (trx.staffName != null && trx.staffName!.trim().isNotEmpty) ? trx.staffName!.trim() : '-';
+  lines.add('Tanggal : ${DateFormatter.formatDateTime(trx.transactionDate)}');
+  lines.add(truncate('Kasir : $kasirName'));
     lines.add(line());
 
-    // Items
-    String itemRow(String qty, String price, String subtotal) {
-      const int spaces = 2;
-      final int qtyW = width <= 34 ? 4 : 5;
-      int priceW = ((width - qtyW - spaces) * 0.28).round();
-      if (priceW < 9) priceW = 9;
-      int subtotalW = width - qtyW - priceW - spaces;
-      if (subtotalW < 10) {
-        final need = 10 - subtotalW;
-        priceW = (priceW - need).clamp(7, priceW);
-        subtotalW = width - qtyW - priceW - spaces;
-      }
-      String right(String s, int w) => s.length > w ? s.substring(s.length - w) : s.padLeft(w);
-      return [right(qty, qtyW), right(price, priceW), right(subtotal, subtotalW)].join(' ');
+    // Items header
+    final int qtyW = width <= 34 ? 3 : 4;
+    int totalW = (width * 0.25).round();
+    if (totalW < 7) totalW = 7;
+    final int nameW = width - qtyW - totalW - 2;
+    String itemHeader() {
+      final nm = 'Nama Barang';
+      final qh = 'Qty';
+      final th = 'Total';
+      final left = nm.length > nameW ? nm.substring(0, nameW) : nm.padRight(nameW);
+      final qpart = qh.padLeft(qtyW);
+      final tpart = th.padLeft(totalW);
+      return '$left  $qpart$tpart';
     }
+    lines.add(itemHeader());
+    lines.add(line());
 
     for (final it in trx.items) {
-      lines.addAll(wrap(it.productName));
-      lines.add(itemRow(
-        it.quantity.toString(),
-        money(it.price, withSymbol: true),
-        money(it.subtotal, withSymbol: false),
-      ));
+      final totalStr = money(it.subtotal);
+      final qtyStr = it.quantity.toString();
+      final wrapped = <String>[];
+      var remaining = it.productName.trim();
+      while (remaining.isNotEmpty) {
+        if (remaining.length <= nameW) { wrapped.add(remaining); break; }
+        final cut = remaining.substring(0, nameW);
+        final idx = cut.lastIndexOf(' ');
+        if (idx > 0) {
+          wrapped.add(cut.substring(0, idx));
+          remaining = remaining.substring(idx + 1).trimLeft();
+        } else {
+          wrapped.add(cut);
+          remaining = remaining.substring(nameW);
+        }
+      }
+      for (int i = 0; i < wrapped.length; i++) {
+        final part = wrapped[i];
+        if (i < wrapped.length - 1) {
+          lines.add(part);
+        } else {
+          final left = part.length > nameW ? part.substring(0, nameW) : part.padRight(nameW);
+          final qpart = qtyStr.padLeft(qtyW);
+          final tpart = totalStr.padLeft(totalW);
+          lines.add('$left  $qpart$tpart');
+        }
+      }
     }
 
-    // Totals
-    lines.add(line());
-    final totalQty = trx.items.fold<int>(0, (sum, it) => sum + it.quantity);
-    lines.add(padKV('Jumlah item', totalQty.toString()));
-    lines.add(padKV('Subtotal', money(trx.subtotal), fillChar: '.'));
+  lines.add(line());
+    lines.add(padKV('Subtotal', CurrencyFormatter.formatWithoutSymbol(trx.subtotal), fillChar: '.'));
     if (trx.discount != 0) {
-      final disc = trx.discount > 0 ? '- ${money(trx.discount)}' : money(trx.discount);
+      final disc = trx.discount > 0 ? '- ${CurrencyFormatter.formatWithoutSymbol(trx.discount)}' : CurrencyFormatter.formatWithoutSymbol(trx.discount);
       lines.add(padKV('Diskon', disc, fillChar: '.'));
     }
-    if (trx.tax != 0) {
-      lines.add(padKV('Pajak', money(trx.tax), fillChar: '.'));
-    }
     lines.add(line('='));
-    lines.add(padKV('Total', money(trx.total), fillChar: '.'));
-    lines.add(padKV('Dibayar', money(trx.paid), fillChar: '.'));
-    lines.add(padKV('Kembali', money(trx.change), fillChar: '.'));
+    lines.add(padKV('TOTAL', CurrencyFormatter.formatWithoutSymbol(trx.total), fillChar: '.'));
+    lines.add(padKV('Tunai', CurrencyFormatter.formatWithoutSymbol(trx.paid), fillChar: '.'));
+    lines.add(padKV('Kembali', CurrencyFormatter.formatWithoutSymbol(trx.change), fillChar: '.'));
+  // Add a blank line before footer so it doesn't stick to totals
+  lines.add('');
 
-    // Footer
-    lines.add(center('Terima kasih'));
+  // Footer
+  if (receiptFooter.trim().isNotEmpty) {
+      for (final l in receiptFooter.split('\n')) {
+        lines.add(center(truncate(l.trim())));
+      }
+    } else {
+      lines.add(center('Terima Kasih :)'));
+      lines.add(center('Barang yang sudah dibeli'));
+      lines.add(center('tidak dapat dikembalikan'));
+    }
 
     return lines;
   }

@@ -52,9 +52,11 @@ class _HistoryListScreenState extends State<HistoryListScreen> {
   Future<void> _reprint(models.Transaction tx) async {
     final sp = context.read<SettingsProvider>();
     final mac = sp.btPrinterId;
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
     if (mac == null || mac.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Pilih printer Bluetooth terlebih dahulu di menu Printer')), 
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Pilih printer Bluetooth terlebih dahulu di menu Printer')),
       );
       return;
     }
@@ -62,14 +64,14 @@ class _HistoryListScreenState extends State<HistoryListScreen> {
     // Ambil transaksi lengkap dengan items
     final full = await _svc.getTransactionById(tx.id!);
     if (full == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Transaksi tidak ditemukan')), 
-      );
+      messenger.showSnackBar(const SnackBar(content: Text('Transaksi tidak ditemukan')));
       return;
     }
 
+    // Use navigator.context (captured NavigatorState) to show a progress dialog without using
+    // BuildContext across async gaps.
     showDialog(
-      context: context,
+      context: navigator.context,
       barrierDismissible: false,
       builder: (_) => const Center(child: CircularProgressIndicator()),
     );
@@ -84,23 +86,27 @@ class _HistoryListScreenState extends State<HistoryListScreen> {
         storeAddress: sp.storeAddress,
         storePhone: sp.storePhone,
         paperSize: sp.paperSize,
-        charWidth: sp.receiptCharWidth,
+          charWidth: sp.receiptCharWidth,
+          receiptFooter: sp.receiptFooter,
       );
     } catch (e) {
       err = e.toString();
     } finally {
-      if (mounted) Navigator.of(context).pop();
+      if (mounted) navigator.pop();
     }
 
     if (!mounted) return;
     if (ok) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Cetak ulang terkirim')),
-      );
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        messenger.showSnackBar(const SnackBar(content: Text('Cetak ulang terkirim')));
+      });
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Gagal cetak ulang${err != null ? ': $err' : ''}')),
-      );
+      final errMsg = err != null ? ': $err' : '';
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        messenger.showSnackBar(SnackBar(content: Text('Gagal cetak ulang$errMsg')));
+      });
     }
   }
 
@@ -206,11 +212,12 @@ class _HistoryListScreenState extends State<HistoryListScreen> {
 
   Future<void> _showDetail(models.Transaction tx) async {
     // Optional simple detail dialog showing items
+    final navigator = Navigator.of(context);
     final full = await _svc.getTransactionById(tx.id!);
     if (!mounted) return;
     if (full == null) return;
     showModalBottomSheet(
-      context: context,
+      context: navigator.context,
       showDragHandle: true,
       isScrollControlled: true,
       builder: (_) => DraggableScrollableSheet(

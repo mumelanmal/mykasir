@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../models/product.dart';
+import '../../models/staff.dart';
 import '../../providers/product_provider.dart';
 import '../../providers/transaction_provider.dart';
 import '../../providers/settings_provider.dart';
+import '../../providers/staff_provider.dart';
 import '../../services/bluetooth_classic_printer.dart';
 import '../../core/utils/currency_formatter.dart';
 
@@ -39,29 +41,24 @@ class _TransactionScreenState extends State<TransactionScreen> {
     context.read<TransactionProvider>().addToCart(p);
   }
 
+  // ignore: use_build_context_synchronously
   Future<void> _pay() async {
     final tp = context.read<TransactionProvider>();
     final total = tp.total;
-    final paidCtrl = TextEditingController(text: total.toStringAsFixed(0));
-    double parsePaid() => double.tryParse(paidCtrl.text.replaceAll(RegExp(r'[^0-9]'), ''))?.toDouble() ?? 0;
+  final paidCtrl = TextEditingController(text: total.toStringAsFixed(0));
 
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) {
         return StatefulBuilder(builder: (ctx, setState) {
           // Normalize current method for UI (strip channel suffix like ewallet:OVO)
-          String methodBase = tp.paymentMethod.split(':').first;
-          String ewProvider = tp.paymentChannel ?? (tp.paymentMethod.startsWith('ewallet:')
-              ? tp.paymentMethod.split(':').elementAt(1)
-              : 'OVO');
+          String methodBase = tp.paymentMethod == 'cash' ? 'cash' : 'non_tunai';
 
           void setAmount(num v) {
             paidCtrl.text = v.toStringAsFixed(0);
             paidCtrl.selection = TextSelection.fromPosition(TextPosition(offset: paidCtrl.text.length));
             setState(() {});
           }
-
-          void addAmount(num v) => setAmount((parsePaid()) + v);
 
           return AlertDialog(
             title: const Text('Pembayaran'),
@@ -81,55 +78,24 @@ class _TransactionScreenState extends State<TransactionScreen> {
                         selected: methodBase == 'cash',
                         onSelected: (_) {
                           methodBase = 'cash';
-                          tp.setPaymentMethod(methodBase);
+                          tp.setPaymentMethod('cash');
                           tp.setPaymentChannel(null);
                           setState(() {});
                         },
                       ),
                       ChoiceChip(
-                        label: const Text('E-Wallet'),
-                        selected: methodBase == 'ewallet',
+                        label: const Text('Non-tunai'),
+                        selected: methodBase != 'cash',
                         onSelected: (_) {
-                          methodBase = 'ewallet';
-                          tp.setPaymentMethod(methodBase);
-                          setAmount(total);
-                          setState(() {});
-                        },
-                      ),
-                      ChoiceChip(
-                        label: const Text('QRIS'),
-                        selected: methodBase == 'qris',
-                        onSelected: (_) {
-                          methodBase = 'qris';
-                          tp.setPaymentMethod(methodBase);
+                          methodBase = 'non_tunai';
+                          tp.setPaymentMethod('non_tunai');
                           tp.setPaymentChannel(null);
+                          // auto fill exact total for non-tunai
                           setAmount(total);
                         },
                       ),
                     ],
                   ),
-                  if (methodBase == 'ewallet') ...[
-                    const SizedBox(height: 8),
-                    Text('Provider E-Wallet', style: Theme.of(context).textTheme.labelLarge),
-                    const SizedBox(height: 6),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        for (final p in ['OVO','DANA','GoPay','ShopeePay','LinkAja','Lainnya'])
-                          ChoiceChip(
-                            label: Text(p),
-                            selected: ewProvider == p,
-                            onSelected: (_) {
-                              ewProvider = p;
-                              tp.setPaymentChannel(p);
-                              setAmount(total);
-                              setState(() {});
-                            },
-                          ),
-                      ],
-                    ),
-                  ],
                   const SizedBox(height: 12),
                   TextField(
                     controller: paidCtrl,
@@ -147,24 +113,20 @@ class _TransactionScreenState extends State<TransactionScreen> {
                         child: const Text('Pas (Exact)'),
                       ),
                       OutlinedButton(
-                        onPressed: methodBase == 'cash' ? () => addAmount(5000) : null,
-                        child: const Text('+5.000'),
+                        onPressed: methodBase == 'cash' ? () => setAmount(10000) : null,
+                        child: const Text('10.000'),
                       ),
                       OutlinedButton(
-                        onPressed: methodBase == 'cash' ? () => addAmount(10000) : null,
-                        child: const Text('+10.000'),
+                        onPressed: methodBase == 'cash' ? () => setAmount(20000) : null,
+                        child: const Text('20.000'),
                       ),
                       OutlinedButton(
-                        onPressed: methodBase == 'cash' ? () => addAmount(20000) : null,
-                        child: const Text('+20.000'),
+                        onPressed: methodBase == 'cash' ? () => setAmount(50000) : null,
+                        child: const Text('50.000'),
                       ),
                       OutlinedButton(
-                        onPressed: methodBase == 'cash' ? () => addAmount(50000) : null,
-                        child: const Text('+50.000'),
-                      ),
-                      OutlinedButton(
-                        onPressed: methodBase == 'cash' ? () => addAmount(100000) : null,
-                        child: const Text('+100.000'),
+                        onPressed: methodBase == 'cash' ? () => setAmount(100000) : null,
+                        child: const Text('100.000'),
                       ),
                     ],
                   ),
@@ -182,16 +144,38 @@ class _TransactionScreenState extends State<TransactionScreen> {
 
     if (ok == true) {
   final paid = tp.paymentMethod.split(':').first == 'cash' ? (double.tryParse(paidCtrl.text.trim()) ?? total) : total;
-      final result = await tp.processTransaction(paid: paid);
+      // determine staff name: use explicit logged-in staff from Settings; if not set, use '-'
+      String staffName = '-';
+      try {
+        final sp = context.read<SettingsProvider>();
+        final loggedId = sp.loggedInStaffId;
+        if (loggedId != null) {
+          final spStaff = context.read<StaffProvider>();
+          Staff? matched;
+          try {
+            matched = spStaff.staffs.firstWhere((s) => s.id == loggedId);
+          } catch (_) {
+            matched = null;
+          }
+          if (matched != null) staffName = matched.name;
+        }
+      } catch (_) {
+        // if providers not available, keep '-'
+      }
+      final result = await tp.processTransaction(paid: paid, staffName: staffName);
       if (!mounted) return;
       if (result != null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Transaksi #${result.transactionNumber} berhasil')),
-        );
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Transaksi #${result.transactionNumber} berhasil')),
+          );
+        });
         // Cetak otomatis bila diaktifkan di Pengaturan (hanya desktop)
         final sp = context.read<SettingsProvider>();
         if (sp.btPrinterId?.isNotEmpty == true) {
           // Cetak langsung via Bluetooth Classic (tanpa dialog)
+          final messenger = ScaffoldMessenger.of(context);
           try {
             final ok = await BluetoothClassicPrinter().printTransaction(
               mac: sp.btPrinterId!,
@@ -201,24 +185,34 @@ class _TransactionScreenState extends State<TransactionScreen> {
               storePhone: sp.storePhone,
               paperSize: sp.paperSize,
               charWidth: sp.receiptCharWidth,
+              receiptFooter: sp.receiptFooter,
             );
             if (!ok) {
               if (!mounted) return;
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Gagal cetak via Bluetooth')), 
-              );
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (!mounted) return;
+                messenger.showSnackBar(
+                  const SnackBar(content: Text('Gagal cetak via Bluetooth')),
+                );
+              });
             }
           } catch (e) {
             if (!mounted) return;
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Gagal cetak Bluetooth: $e')),
-            );
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (!mounted) return;
+              messenger.showSnackBar(
+                SnackBar(content: Text('Gagal cetak Bluetooth: $e')),
+              );
+            });
           }
         }
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(tp.errorMessage ?? 'Gagal memproses transaksi')),
-        );
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(tp.errorMessage ?? 'Gagal memproses transaksi')),
+            );
+          });
       }
     }
   }
@@ -311,10 +305,15 @@ class _TransactionScreenState extends State<TransactionScreen> {
         : LayoutBuilder(builder: (context, c) {
             int crossAxisCount = 2;
             final w = c.maxWidth;
-            if (w >= 1200) crossAxisCount = 5;
-            else if (w >= 1000) crossAxisCount = 4;
-            else if (w >= 700) crossAxisCount = 3;
-            else crossAxisCount = 2;
+            if (w >= 1200) {
+              crossAxisCount = 5;
+            } else if (w >= 1000) {
+              crossAxisCount = 4;
+            } else if (w >= 700) {
+              crossAxisCount = 3;
+            } else {
+              crossAxisCount = 2;
+            }
             return GridView.builder(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
               gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
@@ -347,7 +346,9 @@ class _TransactionScreenState extends State<TransactionScreen> {
                     );
                     if (ok == true) {
                       final q = int.tryParse(qtyCtrl.text.trim()) ?? 1;
-                      if (q > 0) context.read<TransactionProvider>().addToCart(p, quantity: q);
+                      if (q > 0) {
+                        context.read<TransactionProvider>().addToCart(p, quantity: q);
+                      }
                     }
                   },
                   child: Container(
@@ -495,6 +496,28 @@ class _TransactionScreenState extends State<TransactionScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Transaksi'),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(28),
+          child: Container(
+            alignment: Alignment.centerLeft,
+            padding: const EdgeInsets.only(left: 16, bottom: 8),
+            child: Builder(builder: (context) {
+              final sp = context.watch<SettingsProvider>();
+              final staffProv = context.watch<StaffProvider>();
+              String name = '-';
+              final loggedId = sp.loggedInStaffId;
+              if (loggedId != null) {
+                try {
+                  final matched = staffProv.staffs.firstWhere((s) => s.id == loggedId);
+                  name = matched.name;
+                } catch (_) {
+                  // keep '-'
+                }
+              }
+              return Text('Kasir: $name', style: const TextStyle(fontSize: 12, color: Colors.white70));
+            }),
+          ),
+        ),
       ),
       drawer: Drawer(
         child: ListView(

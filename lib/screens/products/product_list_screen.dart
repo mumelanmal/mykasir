@@ -147,16 +147,24 @@ class _ProductListScreenState extends State<ProductListScreen> {
                               subtitle: Text('Stok: ${p.stock} • Harga: ${p.price.toStringAsFixed(0)}'),
                               trailing: IconButton(
                                 icon: const Icon(Icons.delete_outline),
-                                onPressed: p.id == null
+                onPressed: p.id == null
                                     ? null
-                                    : () async {
-                                        final ok = await context.read<ProductProvider>().deleteProduct(p.id!);
-                                        if (!context.mounted) return;
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(
-                                            content: Text(ok ? 'Produk dihapus' : 'Gagal menghapus produk'),
-                                          ),
-                                        );
+                                    : () {
+                                        if (!mounted) return;
+                                        final messenger = ScaffoldMessenger.of(context);
+                                        final provider = context.read<ProductProvider>();
+                                        () async {
+                                          final ok = await provider.deleteProduct(p.id!);
+                                          if (!mounted) return;
+                                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                                            if (!mounted) return;
+                                            messenger.showSnackBar(
+                                              SnackBar(
+                                                content: Text(ok ? 'Produk dihapus' : 'Gagal menghapus produk'),
+                                              ),
+                                            );
+                                          });
+                                        }();
                                       },
                               ),
                               onTap: () {
@@ -174,7 +182,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
           final created = await Navigator.of(context).push<bool>(
             MaterialPageRoute(builder: (_) => const ProductFormScreen()),
           );
-          if (!context.mounted) return;
+          if (!mounted) return;
           if (created == true) {
             context.read<ProductProvider>().loadProducts();
           }

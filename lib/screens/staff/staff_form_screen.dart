@@ -61,7 +61,7 @@ class _StaffFormScreenState extends State<StaffFormScreen> {
       isActive: _isActive,
     );
     final ok = widget.staff == null ? await sp.addStaff(data) : await sp.updateStaff(data);
-    if (!context.mounted) return;
+  if (!mounted) return;
     if (ok) {
       Navigator.of(context).pop(true);
     } else {

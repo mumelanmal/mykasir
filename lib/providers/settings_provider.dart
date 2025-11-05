@@ -17,6 +17,8 @@ class SettingsProvider extends ChangeNotifier {
   static const _kStorePhoneKey = 'storePhone';
   static const _kPaperSizeKey = 'paperSize'; // '58mm' | '80mm'
   static const _kReceiptWidthKey = 'receiptCharWidth'; // e.g., 32, 42, 48
+  static const _kReceiptFooterKey = 'receiptFooter';
+  static const _kLoggedInStaffIdKey = 'loggedInStaffId';
 
   final Box _box = Hive.box(AppConstants.settingsBox);
 
@@ -32,6 +34,8 @@ class SettingsProvider extends ChangeNotifier {
   String _storePhone = '';
   String _paperSize = '58mm';
   int _receiptCharWidth = 32;
+  String _receiptFooter = 'Terima Kasih :)\nBarang yang sudah dibeli\ntidak dapat dikembalikan';
+  int? _loggedInStaffId;
 
   double get defaultTaxRatePercent => _defaultTaxRatePercent;
   double get defaultDiscountRatePercent => _defaultDiscountRatePercent;
@@ -45,6 +49,8 @@ class SettingsProvider extends ChangeNotifier {
   String get storePhone => _storePhone;
   String get paperSize => _paperSize; // '58mm' or '80mm'
   int get receiptCharWidth => _receiptCharWidth;
+  String get receiptFooter => _receiptFooter;
+  int? get loggedInStaffId => _loggedInStaffId;
 
   SettingsProvider() {
     _load();
@@ -72,6 +78,8 @@ class SettingsProvider extends ChangeNotifier {
     } else {
       _receiptCharWidth = _paperSize == '80mm' ? 42 : 32;
     }
+    _receiptFooter = (_box.get(_kReceiptFooterKey) as String?) ?? _receiptFooter;
+    _loggedInStaffId = _box.get(_kLoggedInStaffIdKey) as int?;
   }
 
   Future<void> setDefaultTaxRatePercent(double value) async {
@@ -155,6 +163,22 @@ class SettingsProvider extends ChangeNotifier {
     if (width <= 0) return;
     _receiptCharWidth = width;
     await _box.put(_kReceiptWidthKey, _receiptCharWidth);
+    notifyListeners();
+  }
+
+  Future<void> setReceiptFooter(String value) async {
+    _receiptFooter = value.trim();
+    await _box.put(_kReceiptFooterKey, _receiptFooter);
+    notifyListeners();
+  }
+
+  Future<void> setLoggedInStaffId(int? id) async {
+    _loggedInStaffId = id;
+    if (id == null) {
+      await _box.delete(_kLoggedInStaffIdKey);
+    } else {
+      await _box.put(_kLoggedInStaffIdKey, id);
+    }
     notifyListeners();
   }
 

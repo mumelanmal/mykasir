@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../providers/settings_provider.dart';
+import '../../providers/staff_provider.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -17,6 +18,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late final TextEditingController _storeNameCtrl;
   late final TextEditingController _storeAddressCtrl;
   late final TextEditingController _storePhoneCtrl;
+  late final TextEditingController _footerCtrl;
+  int? _selectedStaffId;
   bool _autoPrint = false;
 
   @override
@@ -28,7 +31,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _storeNameCtrl = TextEditingController(text: sp.storeName);
     _storeAddressCtrl = TextEditingController(text: sp.storeAddress);
     _storePhoneCtrl = TextEditingController(text: sp.storePhone);
+    _footerCtrl = TextEditingController(text: sp.receiptFooter);
+    _selectedStaffId = sp.loggedInStaffId;
   _autoPrint = sp.autoPrintAfterSale;
+    // ensure staff list is loaded for the selector
+    try {
+      context.read<StaffProvider>().loadStaffs();
+    } catch (_) {}
   }
 
   @override
@@ -38,6 +47,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _storeNameCtrl.dispose();
     _storeAddressCtrl.dispose();
     _storePhoneCtrl.dispose();
+    _footerCtrl.dispose();
     super.dispose();
   }
 
@@ -54,6 +64,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await sp.setDefaultTaxRatePercent(tax);
     await sp.setDefaultDiscountRatePercent(disc);
     await sp.setAutoPrintAfterSale(_autoPrint);
+    await sp.setReceiptFooter(_footerCtrl.text.trim());
+    await sp.setLoggedInStaffId(_selectedStaffId);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Pengaturan disimpan')));
   }
@@ -233,6 +245,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: 16),
           ],
+          const SizedBox(height: 12),
+          // Logged-in staff selector
+          const SizedBox(height: 8),
+          Text('Kasir (Logged-in)', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 8),
+          Builder(builder: (context) {
+            final staffProv = context.watch<StaffProvider>();
+            if (staffProv.isLoading) return const CircularProgressIndicator();
+            final items = <DropdownMenuItem<int?>>[];
+            items.add(const DropdownMenuItem<int?>(value: null, child: Text('- Tidak ada -')));
+            for (final s in staffProv.staffs) {
+              items.add(DropdownMenuItem<int?>(value: s.id, child: Text(s.name)));
+            }
+            return DropdownButtonFormField<int?>(
+              value: _selectedStaffId,
+              decoration: const InputDecoration(labelText: 'Pilih Kasir (opsional)'),
+              items: items,
+              onChanged: (v) => setState(() => _selectedStaffId = v),
+            );
+          }),
+          const SizedBox(height: 12),
+          Text('Footer Struk', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _footerCtrl,
+            decoration: const InputDecoration(
+              labelText: 'Footer struk (baris baru gunakan enter)',
+              hintText: 'Terima Kasih :)\nBarang yang sudah dibeli\ntidak dapat dikembalikan',
+            ),
+            maxLines: 3,
+          ),
+          const SizedBox(height: 12),
           ElevatedButton.icon(
             onPressed: _save,
             icon: const Icon(Icons.save),
