@@ -33,17 +33,20 @@ class _HistoryListScreenState extends State<HistoryListScreen> {
       _loading = true;
       _error = null;
     });
+    List<models.Transaction> list = const [];
+    String? error;
     try {
-      final list = await _svc.getAllTransactions(limit: 100);
-      if (!mounted) return;
-      setState(() => _items = list);
+      list = await _svc.getAllTransactions(limit: 100);
     } catch (e) {
-      if (!mounted) return;
-      setState(() => _error = 'Gagal memuat riwayat: $e');
-    } finally {
-      if (!mounted) return;
-      setState(() => _loading = false);
+      error = 'Gagal memuat riwayat: $e';
     }
+
+    if (!mounted) return;
+    setState(() {
+      _items = list;
+      _error = error;
+      _loading = false;
+    });
   }
 
   Future<void> _reprint(models.Transaction tx) async {

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter/services.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 import 'core/themes/app_theme.dart';
@@ -66,23 +67,27 @@ class MyKasirApp extends StatelessWidget {
         },
         navigatorObservers: [routeTracker],
         builder: (context, child) {
-          return WillPopScope(
-            onWillPop: () async {
+               return PopScope<Object?>(
+            // We control pops manually via onPopInvokedWithResult. Setting
+            // canPop to false prevents the framework from automatically
+            // popping the route so we can decide what to do.
+            canPop: false,
+                 onPopInvokedWithResult: (bool didPop, Object? result) {
               final navState = MyKasirApp.navigatorKey.currentState;
               final navContext = MyKasirApp.navigatorKey.currentContext ?? context;
+              if (navState == null) return;
 
-              // If navigator is not available, allow default behavior
-              if (navState == null) return true;
-
-              // If current route is not home, go back to home (replace stack)
+              // If current route is not home, navigate to home (replace stack)
               if (MyKasirApp.currentRoute != '/') {
                 navState.pushNamedAndRemoveUntil('/', (route) => false);
                 MyKasirApp.currentRoute = '/';
-                return false; // handled
+                return;
               }
 
               // We're at root (Home). Ask for confirmation before exiting.
-              final shouldExit = await showDialog<bool>(
+              // onPopInvokedWithResult must return void, so use then() to handle
+              // the asynchronous dialog result.
+              showDialog<bool>(
                 context: navContext,
                 builder: (ctx) => AlertDialog(
                   title: const Text('Konfirmasi'),
@@ -98,8 +103,12 @@ class MyKasirApp extends StatelessWidget {
                     ),
                   ],
                 ),
-              );
-              return shouldExit == true;
+              ).then((shouldExit) {
+                if (shouldExit == true) {
+                  // Exit the app programmatically
+                  SystemNavigator.pop();
+                }
+              });
             },
             child: child!,
           );

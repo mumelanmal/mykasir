@@ -106,7 +106,7 @@ class _StaffFormScreenState extends State<StaffFormScreen> {
             ),
             const SizedBox(height: 8),
             DropdownButtonFormField<String>(
-              value: _role,
+              initialValue: _role,
               decoration: const InputDecoration(labelText: 'Role'),
               items: const [
                 DropdownMenuItem(value: 'cashier', child: Text('Cashier')),

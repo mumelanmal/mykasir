@@ -28,23 +28,23 @@ class _HomeScreenState extends State<HomeScreen> {
       _loading = true;
       _error = null;
     });
+    double sales = 0;
+    int count = 0;
+    String? error;
     try {
-      final sales = await _txnService.getTodaySales();
-      final count = await _txnService.getTodayTransactionCount();
-      if (!mounted) return;
-      setState(() {
-        _todaySales = sales;
-        _todayCount = count;
-      });
+      sales = await _txnService.getTodaySales();
+      count = await _txnService.getTodayTransactionCount();
     } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _error = 'Gagal memuat ringkasan: $e';
-      });
-    } finally {
-      if (!mounted) return;
-      setState(() => _loading = false);
+      error = 'Gagal memuat ringkasan: $e';
     }
+
+    if (!mounted) return;
+    setState(() {
+      _todaySales = sales;
+      _todayCount = count;
+      _error = error;
+      _loading = false;
+    });
   }
 
   @override

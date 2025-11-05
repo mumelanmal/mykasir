@@ -41,13 +41,13 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^2.0.0
-  flutter_launcher_icons: ^0.13.1
+  # Removed flutter_launcher_icons to slim the project. Generate icons offline if needed.
 
 flutter:
   uses-material-design: true
 
   assets:
-    - assets/images/
+    # Keep only printer templates (if you use them). Remove images folder to avoid bundling unused assets.
     - assets/printer/
     # - assets/fonts/
 
@@ -56,11 +56,4 @@ flutter:
   #     fonts:
   #       - asset: assets/fonts/Inter-Regular.ttf
 
-flutter_icons:
-  android: true
-  ios: true
-  macos:
-    generate: true
-  windows:
-    generate: true
-  image_path: "assets/images/app_logo.png"
+## Icon generation removed (keep assets/images/ only if you need in-app branding)
